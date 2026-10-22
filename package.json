@@ -1,7 +1,7 @@
 {
   "name": "dsh-aurora-theme",
-  "version": "0.1.0",
-  "description": "Aurora skin for the DeepSeek Harness Web UI: animated background, semantic-token surfaces, three palettes and a skin page.",
+  "version": "0.2.0",
+  "description": "Wallpaper + aurora skin for the DeepSeek Harness Web UI: custom background with blur/dim, three palettes, seven effects, and an off switch.",
   "type": "module",
   "license": "MIT",
   "keywords": [
@@ -26,8 +26,7 @@
     "tools/check.mjs",
     "LICENSE",
     "docs/preview-dark.jpg",
-    "docs/preview-light.jpg",
-    "docs/preview-app.jpg"
+    "docs/preview-light.jpg"
   ],
   "engines": {
     "node": ">=22.19.0",

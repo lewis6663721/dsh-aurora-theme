@@ -7,7 +7,7 @@
  *
  * Layout of this file:
  *   1. constants, palettes, dictionaries
- *   2. a tiny persisted store (localStorage; per browser by design)
+ *   2. persisted state + IndexedDB wallpaper store
  *   3. background layer install/teardown (style, DOM, attributes, rAF)
  *   4. the skin page and its sidebar entry
  *   5. apply(ctx): install + locale + two slot registrations
@@ -19,19 +19,36 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const NAME = 'dsh-aurora-theme'
+    const VERSION = '0.2.0'
     /** Main-panel key and sidebar entry id; they must match. */
     const PANEL_ID = 'aurora-theme'
     /** Locale namespace for this plugin's dictionaries. */
     const NS = 'auroraTheme'
-    const STORAGE_KEY = 'dsh-aurora-theme/v1'
-    const LEGACY_KEYS = ['dsh-aurora-theme', 'aurora-theme']
+    const STORAGE_KEY = 'dsh-aurora-theme/v2'
+    const LEGACY_KEYS = ['dsh-aurora-theme/v1', 'dsh-aurora-theme', 'aurora-theme']
     const LAYER_ID = 'dsh-aurora-layer'
     const STYLE_ID = 'dsh-aurora-style'
+    const DB_NAME = 'dsh-aurora-theme'
+    const DB_STORE = 'assets'
+    const WALLPAPER_KEY = 'wallpaper'
 
+    const MODES = ['aurora', 'ember', 'mint', 'wallpaper', 'off']
     /** Toggle order on the page; each key becomes `data-aurora-<key>`. */
-    const TOGGLES = ['glow', 'motes', 'grain', 'parallax', 'breathe', 'sweep', 'glass']
+    const TOGGLES = ['glow', 'parallax', 'breathe', 'sweep', 'motes', 'grain', 'glass']
+    const DEFAULT_STATE = {
+      mode: 'aurora',
+      blur: 8,
+      dim: 30,
+      glow: true,
+      parallax: true,
+      breathe: true,
+      sweep: true,
+      motes: true,
+      grain: true,
+      glass: true,
+    }
 
-    const SKINS = [
+    const PALETTES = [
       {
         id: 'aurora',
         dark: { bg: '#05080f', a1: '#48f0c0', a2: '#4f7cff', a3: '#b45cff', a4: '#ff5ea8' },
@@ -49,72 +66,74 @@ window.__ModuleLoader__.load({
       },
     ]
 
-    const DEFAULT_STATE = { skin: 'aurora', glow: true, motes: true, grain: true, parallax: true, breathe: true, sweep: true, glass: true }
-
     const ZH = {
       panel: '皮肤',
       title: '皮肤',
-      intro: '一层垫在界面之下的动态背景，加上一套半透明的表面 token。皮肤只改变观感，不改变任何功能。',
-      palette: '配色',
-      effects: '效果',
-      'skin.aurora': '极光',
-      'skin.aurora.desc': '青绿 · 靛蓝 · 品红',
-      'skin.ember': '余烬',
-      'skin.ember.desc': '琥珀 · 玫红 · 紫',
-      'skin.mint': '薄荷',
-      'skin.mint.desc': '薄荷 · 松绿 · 湖蓝',
-      glow: '光晕',
-      'glow.desc': '背景里的极光色团',
-      motes: '尘埃',
-      'motes.desc': '缓慢上浮的细小光点',
-      grain: '噪点',
-      'grain.desc': '低透明度的胶片颗粒',
-      parallax: '视差',
-      'parallax.desc': '色团随指针轻微移动',
-      breathe: '呼吸',
-      'breathe.desc': '色团缓慢缩放与明暗变化',
-      sweep: '扫光',
-      'sweep.desc': '周期性掠过的高光带',
-      glass: '玻璃',
-      'glass.desc': '半透明表面与磨砂面板',
-      reset: '恢复默认',
+      intro: '换一张背景，或挑一套极光配色；再把面板调成玻璃。改动即时生效，不用重启，也不影响正在跑的会话。',
+      palette: '外观',
+      wallpaper: '我的壁纸',
+      'wallpaper.empty': '还没选图，点一下选一张',
+      'wallpaper.picked': '已选图，点一下更换',
+      'wallpaper.ready': '已选图，点一下使用',
+      choose: '选图',
+      off: '关闭',
+      'off.desc': '回到官方原版外观',
+      'skin.aurora': '深海极光',
+      'skin.aurora.desc': '青绿 · 靛蓝 · 品红，冷色玻璃',
+      'skin.ember': '落日余烬',
+      'skin.ember.desc': '琥珀 · 玫红 · 紫，暖色玻璃',
+      'skin.mint': '苍苔',
+      'skin.mint.desc': '薄荷 · 松绿 · 湖蓝，清透玻璃',
+      wallpaperSection: '壁纸',
+      background: '背景图',
+      remove: '移除',
+      blur: '模糊',
+      dim: '压暗',
+      effects: '动效',
+      glow: '光标光晕',
+      parallax: '壁纸视差',
+      breathe: '呼吸光',
+      sweep: '光斑扫过',
+      motes: '漂浮光点',
+      grain: '颗粒噪点',
+      glass: '分区玻璃',
       active: '当前',
-      on: '开',
-      off: '关',
-      note: '设置只保存在本浏览器，换设备或换浏览器不会跟随。',
+      note: '图片只存在本机（IndexedDB），不会上传。选「关闭」就回到原版外观。',
     }
 
     const EN = {
       panel: 'Skin',
       title: 'Skin',
-      intro: 'An animated backdrop behind the interface plus a translucent surface token set. It changes how DSH looks, never what it does.',
-      palette: 'Palette',
-      effects: 'Effects',
-      'skin.aurora': 'Aurora',
-      'skin.aurora.desc': 'Teal · indigo · magenta',
-      'skin.ember': 'Ember',
-      'skin.ember.desc': 'Amber · rose · violet',
-      'skin.mint': 'Mint',
-      'skin.mint.desc': 'Mint · pine · lagoon',
-      glow: 'Glow',
-      'glow.desc': 'The aurora blobs behind everything',
-      motes: 'Motes',
-      'motes.desc': 'Small light points drifting upward',
-      grain: 'Grain',
-      'grain.desc': 'Low-opacity film grain',
-      parallax: 'Parallax',
-      'parallax.desc': 'Blobs follow the pointer slightly',
-      breathe: 'Breathe',
-      'breathe.desc': 'Slow scale and opacity pulsing',
-      sweep: 'Sweep',
-      'sweep.desc': 'A highlight band crossing periodically',
-      glass: 'Glass',
-      'glass.desc': 'Translucent surfaces and a frosted page',
-      reset: 'Reset',
-      active: 'Active',
-      on: 'On',
+      intro: 'Pick a wallpaper or an aurora palette, then turn the panels into glass. Changes apply immediately — no restart, no effect on running sessions.',
+      palette: 'Appearance',
+      wallpaper: 'My wallpaper',
+      'wallpaper.empty': 'No image yet — click to choose one',
+      'wallpaper.picked': 'Image selected — click to replace',
+      'wallpaper.ready': 'Saved — click to use',
+      choose: 'Choose',
       off: 'Off',
-      note: 'Saved in this browser only; another device or browser starts fresh.',
+      'off.desc': 'Back to the stock look',
+      'skin.aurora': 'Deep aurora',
+      'skin.aurora.desc': 'Teal · indigo · magenta, cool glass',
+      'skin.ember': 'Sunset ember',
+      'skin.ember.desc': 'Amber · rose · violet, warm glass',
+      'skin.mint': 'Moss',
+      'skin.mint.desc': 'Mint · pine · lagoon, clear glass',
+      wallpaperSection: 'Wallpaper',
+      background: 'Background',
+      remove: 'Remove',
+      blur: 'Blur',
+      dim: 'Dim',
+      effects: 'Effects',
+      glow: 'Cursor glow',
+      parallax: 'Wallpaper parallax',
+      breathe: 'Breathing light',
+      sweep: 'Light sweep',
+      motes: 'Floating motes',
+      grain: 'Film grain',
+      glass: 'Panel glass',
+      active: 'Active',
+      note: 'The image stays in this browser (IndexedDB) and is never uploaded. Pick “Off” to return to the stock look.',
     }
 
     // The locale service may arrive after the page is registered; until it
@@ -123,13 +142,20 @@ window.__ModuleLoader__.load({
     let translate = (key) => (prefersZh ? ZH : EN)[key] ?? key
 
     /* ------------------------------------------------------------------ */
-    /* store                                                              */
+    /* persisted state                                                    */
     /* ------------------------------------------------------------------ */
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value))
+    }
 
     function normalize(raw) {
       const state = { ...DEFAULT_STATE }
       if (raw === null || typeof raw !== 'object') return state
-      if (SKINS.some((skin) => skin.id === raw.skin)) state.skin = raw.skin
+      if (MODES.includes(raw.mode)) state.mode = raw.mode
+      else if (typeof raw.skin === 'string' && MODES.includes(raw.skin)) state.mode = raw.skin
+      if (Number.isFinite(raw.blur)) state.blur = clamp(Math.round(raw.blur), 0, 40)
+      if (Number.isFinite(raw.dim)) state.dim = clamp(Math.round(raw.dim), 0, 80)
       for (const key of TOGGLES) if (typeof raw[key] === 'boolean') state[key] = raw[key]
       return state
     }
@@ -178,9 +204,6 @@ window.__ModuleLoader__.load({
           persist(state)
           emit()
         },
-        reset() {
-          this.set({ ...DEFAULT_STATE })
-        },
         subscribe(listener) {
           listeners.add(listener)
           return () => listeners.delete(listener)
@@ -195,16 +218,138 @@ window.__ModuleLoader__.load({
     }
 
     /* ------------------------------------------------------------------ */
+    /* wallpaper: IndexedDB blob + object URL                             */
+    /* ------------------------------------------------------------------ */
+
+    let wallpaperUrl = null
+    const wallpaperListeners = new Set()
+
+    function getWallpaper() {
+      return wallpaperUrl
+    }
+
+    function setWallpaper(url) {
+      if (wallpaperUrl !== null && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(wallpaperUrl)
+      }
+      wallpaperUrl = url
+      for (const listener of [...wallpaperListeners]) {
+        try {
+          listener()
+        } catch (error) {
+          console.warn('aurora-theme: wallpaper listener failed', error)
+        }
+      }
+    }
+
+    function subscribeWallpaper(listener) {
+      wallpaperListeners.add(listener)
+      return () => wallpaperListeners.delete(listener)
+    }
+
+    function useWallpaper() {
+      return React.useSyncExternalStore(subscribeWallpaper, getWallpaper)
+    }
+
+    function openDb() {
+      return new Promise((resolve, reject) => {
+        if (typeof indexedDB === 'undefined') {
+          reject(new Error('IndexedDB is unavailable'))
+          return
+        }
+        const request = indexedDB.open(DB_NAME, 1)
+        request.onupgradeneeded = () => {
+          const db = request.result
+          if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE)
+        }
+        request.onsuccess = () => resolve(request.result)
+        request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed'))
+      })
+    }
+
+    async function idbGet(key) {
+      const db = await openDb()
+      try {
+        return await new Promise((resolve, reject) => {
+          const request = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(key)
+          request.onsuccess = () => resolve(request.result)
+          request.onerror = () => reject(request.error ?? new Error('IndexedDB read failed'))
+        })
+      } finally {
+        db.close()
+      }
+    }
+
+    async function idbPut(key, value) {
+      const db = await openDb()
+      try {
+        await new Promise((resolve, reject) => {
+          const request = db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).put(value, key)
+          request.onsuccess = () => resolve()
+          request.onerror = () => reject(request.error ?? new Error('IndexedDB write failed'))
+        })
+      } finally {
+        db.close()
+      }
+    }
+
+    async function idbDelete(key) {
+      const db = await openDb()
+      try {
+        await new Promise((resolve, reject) => {
+          const request = db.transaction(DB_STORE, 'readwrite').objectStore(DB_STORE).delete(key)
+          request.onsuccess = () => resolve()
+          request.onerror = () => reject(request.error ?? new Error('IndexedDB delete failed'))
+        })
+      } finally {
+        db.close()
+      }
+    }
+
+    async function hydrateWallpaper() {
+      try {
+        const blob = await idbGet(WALLPAPER_KEY)
+        if (!(typeof Blob !== 'undefined' && blob instanceof Blob)) return
+        if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return
+        setWallpaper(URL.createObjectURL(blob))
+      } catch {
+        // No persisted image, or storage unavailable: the palette still works.
+      }
+    }
+
+    async function saveWallpaper(blob) {
+      try {
+        await idbPut(WALLPAPER_KEY, blob)
+      } catch (error) {
+        // The image still works for this session; only persistence is lost.
+        console.warn('aurora-theme: wallpaper not persisted', error)
+      }
+      setWallpaper(URL.createObjectURL(blob))
+      store.set({ mode: 'wallpaper' })
+    }
+
+    async function removeWallpaper() {
+      try {
+        await idbDelete(WALLPAPER_KEY)
+      } catch {
+        // Removing the runtime copy still works when storage is unavailable.
+      }
+      setWallpaper(null)
+      if (store.get().mode === 'wallpaper') store.set({ mode: 'aurora' })
+    }
+
+    /* ------------------------------------------------------------------ */
     /* background layer                                                   */
     /* ------------------------------------------------------------------ */
 
-    const BODY_ATTRS = ['data-aurora-on', 'data-aurora-skin', ...TOGGLES.map((key) => `data-aurora-${key}`)]
+    const BODY_ATTRS = ['data-aurora-on', 'data-aurora-mode', ...TOGGLES.map((key) => `data-aurora-${key}`)]
 
     function applyBody(state) {
       const body = document.body
       if (body === null) return
-      body.setAttribute('data-aurora-on', '1')
-      body.setAttribute('data-aurora-skin', state.skin)
+      if (state.mode === 'off') body.removeAttribute('data-aurora-on')
+      else body.setAttribute('data-aurora-on', '1')
+      body.setAttribute('data-aurora-mode', state.mode)
       for (const key of TOGGLES) body.setAttribute(`data-aurora-${key}`, state[key] ? '1' : '0')
     }
 
@@ -214,14 +359,24 @@ window.__ModuleLoader__.load({
       for (const name of BODY_ATTRS) body.removeAttribute(name)
     }
 
+    function applyLayer(state) {
+      const layer = document.getElementById(LAYER_ID)
+      if (layer === null) return
+      layer.style.setProperty('--a-blur', String(state.blur))
+      layer.style.setProperty('--a-dim', String(state.dim))
+    }
+
     /** Static markup for the backdrop; no user input reaches it. */
     const LAYER_HTML =
-      '<div class="dsh-aurora-parallax"><div class="dsh-aurora-drift">' +
+      '<div class="dsh-aurora-parallax">' +
+      '<div class="dsh-aurora-wallpaper"><img alt=""></div>' +
+      '<div class="dsh-aurora-drift">' +
       '<div class="dsh-aurora-blob b1"></div>' +
       '<div class="dsh-aurora-blob b2"></div>' +
       '<div class="dsh-aurora-blob b3"></div>' +
       '<div class="dsh-aurora-blob b4"></div>' +
       '</div></div>' +
+      '<div class="dsh-aurora-cursor"></div>' +
       '<div class="dsh-aurora-sweep"></div>' +
       '<canvas class="dsh-aurora-motes"></canvas>' +
       '<div class="dsh-aurora-grain"></div>' +
@@ -305,14 +460,14 @@ window.__ModuleLoader__.load({
 
       return {
         sync(state) {
-          const active = state.motes && document.hidden !== true
+          const active = state.motes && state.mode !== 'off' && document.hidden !== true
           if (active && !reduced) {
             measure()
             if (frame === 0) frame = requestAnimationFrame(tick)
           } else {
             stop()
             measure()
-            if (reduced) draw(0, 0)
+            if (reduced && state.mode !== 'off') draw(0, 0)
           }
         },
         dispose() {
@@ -339,27 +494,45 @@ window.__ModuleLoader__.load({
       layer.innerHTML = LAYER_HTML
       document.body.appendChild(layer)
 
+      const image = layer.querySelector('img')
       const canvas = layer.querySelector('canvas')
       const motes = canvas === null ? null : createMotes(canvas)
+
+      const syncWallpaper = () => {
+        if (image === null) return
+        if (wallpaperUrl === null) image.removeAttribute('src')
+        else image.setAttribute('src', wallpaperUrl)
+      }
+      const unsubscribeWallpaper = subscribeWallpaper(syncWallpaper)
+      syncWallpaper()
 
       const render = () => {
         const state = store.get()
         applyBody(state)
+        applyLayer(state)
         if (motes !== null) motes.sync(state)
       }
       const unsubscribe = store.subscribe(render)
       render()
 
+      void hydrateWallpaper()
+
       let pointerFrame = 0
       let pointerX = 0
       let pointerY = 0
+      let cursorX = 0
+      let cursorY = 0
       const onPointerMove = (event) => {
-        if (!store.get().parallax) return
+        cursorX = event.clientX
+        cursorY = event.clientY
+        if (!store.get().parallax && !store.get().glow) return
         pointerX = event.clientX / Math.max(1, window.innerWidth) - 0.5
         pointerY = event.clientY / Math.max(1, window.innerHeight) - 0.5
         if (pointerFrame !== 0) return
         pointerFrame = requestAnimationFrame(() => {
           pointerFrame = 0
+          layer.style.setProperty('--cx', `${cursorX}px`)
+          layer.style.setProperty('--cy', `${cursorY}px`)
           layer.style.setProperty('--mx', pointerX.toFixed(3))
           layer.style.setProperty('--my', pointerY.toFixed(3))
         })
@@ -371,6 +544,7 @@ window.__ModuleLoader__.load({
 
       return () => {
         unsubscribe()
+        unsubscribeWallpaper()
         if (pointerFrame !== 0) cancelAnimationFrame(pointerFrame)
         window.removeEventListener('pointermove', onPointerMove)
         document.removeEventListener('visibilitychange', onVisibility)
@@ -415,17 +589,39 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function ToggleRow(props) {
+    function ChoiceCard(props) {
+      const selected = props.selected === true
+      return h(
+        'button',
+        {
+          type: 'button',
+          role: 'radio',
+          'aria-checked': selected,
+          className: 'dsh-aurora-card' + (selected ? ' is-active' : ''),
+          onClick: props.onClick,
+        },
+        props.preview,
+        h('span', { className: 'dsh-aurora-card-name' }, props.name),
+        h('span', { className: 'dsh-aurora-card-desc' }, props.desc),
+        selected ? h('span', { className: 'dsh-aurora-badge' }, translate('active')) : null,
+      )
+    }
+
+    function Swatch(props) {
+      const palette = props.palette
+      return h('span', {
+        className: 'dsh-aurora-preview dsh-aurora-swatch',
+        'aria-hidden': 'true',
+        style: { '--s1': palette.dark.a1, '--s2': palette.dark.a2, '--s3': palette.dark.a3, '--s4': palette.dark.a4 },
+      })
+    }
+
+    function Toggle(props) {
       const on = props.on === true
       return h(
         'div',
         { className: 'dsh-aurora-row' },
-        h(
-          'div',
-          { className: 'dsh-aurora-row-text' },
-          h('span', { className: 'dsh-aurora-row-title' }, translate(props.id)),
-          h('span', { className: 'dsh-aurora-row-desc' }, translate(`${props.id}.desc`)),
-        ),
+        h('span', { className: 'dsh-aurora-row-label' }, translate(props.id)),
         h(
           'button',
           {
@@ -441,62 +637,141 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function Slider(props) {
+      return h(
+        'div',
+        { className: 'dsh-aurora-row' },
+        h('span', { className: 'dsh-aurora-row-label' }, translate(props.id)),
+        h(
+          'span',
+          { className: 'dsh-aurora-row-control' },
+          h('input', {
+            className: 'dsh-aurora-range',
+            type: 'range',
+            min: props.min,
+            max: props.max,
+            step: 1,
+            value: props.value,
+            'aria-label': translate(props.id),
+            onChange: (event) => store.set({ [props.id]: Number(event.target.value) }),
+          }),
+          h('span', { className: 'dsh-aurora-value' }, `${props.value}${props.unit}`),
+        ),
+      )
+    }
+
     function SkinPage() {
       const state = useSkin()
+      const url = useWallpaper()
+      const fileRef = React.useRef(null)
+
+      const pick = () => {
+        if (fileRef.current !== null) fileRef.current.click()
+      }
+      const onFile = async (event) => {
+        const file = event.target.files === null ? undefined : event.target.files[0]
+        if (file === undefined) return
+        if (!/^image\//.test(file.type)) {
+          event.target.value = ''
+          return
+        }
+        try {
+          await saveWallpaper(file)
+        } catch (error) {
+          console.warn('aurora-theme: wallpaper not saved', error)
+        }
+        event.target.value = ''
+      }
+
       return h(
         'section',
         { className: 'dsh-aurora-page', 'data-aurora-page': '' },
+        h('input', {
+          type: 'file',
+          accept: 'image/*',
+          ref: fileRef,
+          style: { display: 'none' },
+          onChange: onFile,
+        }),
         h(
           'header',
           { className: 'dsh-aurora-head' },
           h('h1', { className: 'dsh-aurora-title' }, translate('title')),
-          h('p', { className: 'dsh-aurora-intro' }, translate('intro')),
+          h('span', { className: 'dsh-aurora-version' }, `v${VERSION}`),
         ),
+        h('p', { className: 'dsh-aurora-intro' }, translate('intro')),
         h(
           'div',
-          { className: 'dsh-aurora-section' },
-          h('h2', { className: 'dsh-aurora-section-title' }, translate('palette')),
-          h(
-            'div',
-            { className: 'dsh-aurora-skins', role: 'radiogroup', 'aria-label': translate('palette') },
-            ...SKINS.map((skin) => {
-              const selected = state.skin === skin.id
-              return h(
-                'button',
-                {
-                  key: skin.id,
-                  type: 'button',
-                  role: 'radio',
-                  'aria-checked': selected,
-                  className: 'dsh-aurora-skin' + (selected ? ' is-active' : ''),
-                  onClick: () => store.set({ skin: skin.id }),
-                  style: {
-                    '--s1': skin.dark.a1,
-                    '--s2': skin.dark.a2,
-                    '--s3': skin.dark.a3,
-                    '--s4': skin.dark.a4,
-                  },
-                },
-                h('span', { className: 'dsh-aurora-swatch', 'aria-hidden': 'true' }),
-                h('span', { className: 'dsh-aurora-skin-name' }, translate(`skin.${skin.id}`)),
-                h('span', { className: 'dsh-aurora-skin-desc' }, translate(`skin.${skin.id}.desc`)),
-                selected ? h('span', { className: 'dsh-aurora-badge' }, translate('active')) : null,
-              )
+          { className: 'dsh-aurora-grid', role: 'radiogroup', 'aria-label': translate('palette') },
+          h(ChoiceCard, {
+            key: 'wallpaper',
+            selected: state.mode === 'wallpaper',
+            onClick: () => {
+              if (url !== null && state.mode !== 'wallpaper') store.set({ mode: 'wallpaper' })
+              else pick()
+            },
+            preview:
+              url === null
+                ? h('span', { className: 'dsh-aurora-preview is-empty' }, `+ ${translate('choose')}`)
+                : h('span', { className: 'dsh-aurora-preview' }, h('img', { src: url, alt: '' })),
+            name: translate('wallpaper'),
+            desc: translate(url === null ? 'wallpaper.empty' : state.mode === 'wallpaper' ? 'wallpaper.picked' : 'wallpaper.ready'),
+          }),
+          ...PALETTES.map((palette) =>
+            h(ChoiceCard, {
+              key: palette.id,
+              selected: state.mode === palette.id,
+              onClick: () => store.set({ mode: palette.id }),
+              preview: h(Swatch, { palette }),
+              name: translate(`skin.${palette.id}`),
+              desc: translate(`skin.${palette.id}.desc`),
             }),
           ),
+          h(ChoiceCard, {
+            key: 'off',
+            selected: state.mode === 'off',
+            onClick: () => store.set({ mode: 'off' }),
+            preview: h('span', { className: 'dsh-aurora-preview is-off' }),
+            name: translate('off'),
+            desc: translate('off.desc'),
+          }),
         ),
+        h('h2', { className: 'dsh-aurora-section-title' }, translate('wallpaperSection')),
         h(
           'div',
           { className: 'dsh-aurora-section' },
-          h('h2', { className: 'dsh-aurora-section-title' }, translate('effects')),
-          ...TOGGLES.map((key) => h(ToggleRow, { key, id: key, on: state[key] })),
+          h(
+            'div',
+            { className: 'dsh-aurora-row' },
+            h('span', { className: 'dsh-aurora-row-label' }, translate('background')),
+            h(
+              'span',
+              { className: 'dsh-aurora-row-control' },
+              url === null
+                ? h('span', { className: 'dsh-aurora-thumb is-empty' })
+                : h('img', { className: 'dsh-aurora-thumb', src: url, alt: '' }),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dsh-aurora-remove',
+                  disabled: url === null,
+                  onClick: () => void removeWallpaper(),
+                },
+                translate('remove'),
+              ),
+            ),
+          ),
+          h(Slider, { id: 'blur', min: 0, max: 40, value: state.blur, unit: ' px' }),
+          h(Slider, { id: 'dim', min: 0, max: 80, value: state.dim, unit: '%' }),
         ),
+        h('h2', { className: 'dsh-aurora-section-title' }, translate('effects')),
         h(
-          'footer',
-          { className: 'dsh-aurora-foot' },
-          h('button', { type: 'button', className: 'dsh-aurora-reset', onClick: () => store.reset() }, translate('reset')),
-          h('p', { className: 'dsh-aurora-note' }, translate('note')),
+          'div',
+          { className: 'dsh-aurora-section' },
+          ...TOGGLES.map((key) => h(Toggle, { key, id: key, on: state[key] })),
         ),
+        h('p', { className: 'dsh-aurora-note' }, translate('note')),
       )
     }
 
@@ -553,28 +828,24 @@ window.__ModuleLoader__.load({
       })
     }
 
-/* -------------------------------------------------------------------- */
-/* styles                                                               */
-/* -------------------------------------------------------------------- */
-
-const CSS = `
+    const CSS = `
 /* Palette tokens. Dark is the default; light only differs in values. */
 body[data-aurora-on] {
   --a-bg: #05080f; --a1: #48f0c0; --a2: #4f7cff; --a3: #b45cff; --a4: #ff5ea8;
 }
-body[data-aurora-on][data-aurora-skin="ember"] {
+body[data-aurora-on][data-aurora-mode="ember"] {
   --a-bg: #0d0709; --a1: #ffb347; --a2: #ff5e7a; --a3: #a855f7; --a4: #ff8a3d;
 }
-body[data-aurora-on][data-aurora-skin="mint"] {
+body[data-aurora-on][data-aurora-mode="mint"] {
   --a-bg: #04100d; --a1: #9bffcf; --a2: #2fbf8f; --a3: #3aa7c9; --a4: #7de2ff;
 }
 body[data-aurora-on]:not([data-ds-dark-theme]) {
   --a-bg: #eef4fb; --a1: #0f9f7a; --a2: #2f5be0; --a3: #8a3ff0; --a4: #e02f7a;
 }
-body[data-aurora-on]:not([data-ds-dark-theme])[data-aurora-skin="ember"] {
+body[data-aurora-on]:not([data-ds-dark-theme])[data-aurora-mode="ember"] {
   --a-bg: #fdf1ea; --a1: #c96a00; --a2: #d02f4f; --a3: #7c3aed; --a4: #d97706;
 }
-body[data-aurora-on]:not([data-ds-dark-theme])[data-aurora-skin="mint"] {
+body[data-aurora-on]:not([data-ds-dark-theme])[data-aurora-mode="mint"] {
   --a-bg: #eefaf4; --a1: #0f8f63; --a2: #0e7a5f; --a3: #0e7490; --a4: #0891b2;
 }
 
@@ -584,9 +855,9 @@ body[data-aurora-on]:not([data-ds-dark-theme])[data-aurora-skin="mint"] {
 body[data-aurora-on] {
   --dsw-alias-bg-base: var(--a-bg) !important;
   --dsw-alias-bg-base: color-mix(in srgb, var(--a-bg) 82%, transparent) !important;
+  --dsw-specific-sidebar-fill: color-mix(in srgb, var(--a-bg) 60%, transparent) !important;
   --dsw-specific-bubble: color-mix(in srgb, var(--a2) 18%, var(--a-bg)) !important;
   --dsw-specific-bubble-highlight: color-mix(in srgb, var(--a2) 26%, var(--a-bg)) !important;
-  --dsw-specific-sidebar-fill: color-mix(in srgb, var(--a-bg) 60%, transparent) !important;
 }
 body[data-aurora-on][data-aurora-glass="1"] {
   --dsw-alias-bg-base: color-mix(in srgb, var(--a-bg) 58%, transparent) !important;
@@ -609,13 +880,26 @@ body[data-aurora-on][data-aurora-glass="1"] {
     radial-gradient(760px 520px at 45% 118%, color-mix(in srgb, var(--a4) 18%, transparent), transparent 70%),
     var(--a-bg);
 }
+body[data-aurora-mode="off"] #dsh-aurora-layer { display: none; }
+
 #dsh-aurora-layer .dsh-aurora-parallax,
-#dsh-aurora-layer .dsh-aurora-drift { position: absolute; inset: -12%; }
+#dsh-aurora-layer .dsh-aurora-drift,
+#dsh-aurora-layer .dsh-aurora-wallpaper { position: absolute; inset: -12%; }
 #dsh-aurora-layer .dsh-aurora-parallax {
   transform: translate3d(calc(var(--mx, 0) * 14px), calc(var(--my, 0) * 10px), 0);
   transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 body[data-aurora-parallax="0"] #dsh-aurora-layer .dsh-aurora-parallax { transform: none; }
+
+#dsh-aurora-layer .dsh-aurora-wallpaper { display: none; }
+body[data-aurora-mode="wallpaper"] #dsh-aurora-layer .dsh-aurora-wallpaper { display: block; }
+#dsh-aurora-layer .dsh-aurora-wallpaper img {
+  width: 100%; height: 100%; object-fit: cover;
+  filter: blur(calc(var(--a-blur, 8) * 1px)) brightness(calc(1 - var(--a-dim, 30) / 100));
+  transform: scale(1.05);
+}
+body[data-aurora-mode="wallpaper"] #dsh-aurora-layer .dsh-aurora-drift { display: none; }
+
 #dsh-aurora-layer .dsh-aurora-drift { animation: aurora-drift 34s ease-in-out infinite alternate; }
 #dsh-aurora-layer .dsh-aurora-blob {
   position: absolute; width: 56vmax; height: 56vmax; border-radius: 50%;
@@ -633,8 +917,16 @@ body:not([data-ds-dark-theme]) #dsh-aurora-layer .dsh-aurora-blob {
   background: radial-gradient(circle at 50% 50%, var(--a4), transparent 62%);
   animation-delay: -2s;
 }
-body[data-aurora-glow="0"] #dsh-aurora-layer .dsh-aurora-drift { display: none; }
 body[data-aurora-breathe="0"] #dsh-aurora-layer .dsh-aurora-blob { animation: none; }
+
+#dsh-aurora-layer .dsh-aurora-cursor {
+  position: absolute; left: 0; top: 0; width: 520px; height: 520px; margin: -260px 0 0 -260px;
+  transform: translate3d(var(--cx, 50vw), var(--cy, 50vh), 0);
+  background: radial-gradient(circle, color-mix(in srgb, var(--a2) 34%, transparent), transparent 68%);
+  filter: blur(24px); mix-blend-mode: screen; opacity: 0;
+  transition: opacity 0.25s ease;
+}
+body[data-aurora-glow="1"] #dsh-aurora-layer .dsh-aurora-cursor { opacity: 0.8; }
 
 #dsh-aurora-layer .dsh-aurora-sweep {
   position: absolute; top: -30%; left: -40%; width: 34%; height: 160%;
@@ -677,9 +969,10 @@ body:not([data-ds-dark-theme]) #dsh-aurora-layer .dsh-aurora-vignette {
 /* Frost only our own page: blurring a column would create a containing block
    for any fixed-position descendant the shell renders inside it. */
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  body[data-aurora-glass="1"] .dsh-aurora-page {
-    -webkit-backdrop-filter: blur(16px) saturate(1.1);
-    backdrop-filter: blur(16px) saturate(1.1);
+  body[data-aurora-glass="1"] .dsh-aurora-page .dsh-aurora-section,
+  body[data-aurora-glass="1"] .dsh-aurora-page .dsh-aurora-card {
+    -webkit-backdrop-filter: blur(14px) saturate(1.08);
+    backdrop-filter: blur(14px) saturate(1.08);
   }
 }
 
@@ -699,58 +992,106 @@ body:not([data-ds-dark-theme]) #dsh-aurora-layer .dsh-aurora-vignette {
 
 /* ---- skin page ---- */
 .dsh-aurora-page {
-  max-width: 880px; margin: 0 auto; padding: 36px 24px 72px;
+  max-width: 1040px; margin: 0 auto; padding: 30px 24px 72px;
   color: var(--dsw-alias-label-primary, #111);
   font: inherit;
-  /* The main column already dims the backdrop; no second panel, so the page
-     does not read as a black card floating over the skin. */
 }
-.dsh-aurora-head { margin-bottom: 28px; }
-.dsh-aurora-title { margin: 0 0 8px; font-size: 24px; line-height: 34px; font-weight: 600; }
-.dsh-aurora-intro { margin: 0; max-width: 62ch; color: var(--dsw-alias-label-secondary, #555); font-size: 14px; line-height: 22px; }
-.dsh-aurora-section { margin-top: 30px; }
-.dsh-aurora-section-title { margin: 0 0 12px; font-size: 13px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dsw-alias-label-tertiary, #777); }
-.dsh-aurora-skins { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
-.dsh-aurora-skin {
-  position: relative; display: flex; flex-direction: column; gap: 8px;
-  padding: 12px; border-radius: 14px; cursor: pointer; text-align: left;
+.dsh-aurora-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.dsh-aurora-title { margin: 0; font-size: 22px; line-height: 30px; font-weight: 600; }
+.dsh-aurora-version {
+  padding: 2px 8px; border-radius: 999px; font-size: 11px; line-height: 16px;
+  color: var(--dsw-alias-label-tertiary, #777);
   border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
-  background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.08));
+}
+.dsh-aurora-intro {
+  margin: 0 0 22px; max-width: 860px;
+  color: var(--dsw-alias-label-secondary, #555); font-size: 13px; line-height: 21px;
+}
+.dsh-aurora-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px;
+}
+.dsh-aurora-card {
+  position: relative; display: flex; flex-direction: column; gap: 9px;
+  padding: 12px; border-radius: 12px; cursor: pointer; text-align: left;
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
+  background: var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08));
   color: inherit; font: inherit;
   transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
-.dsh-aurora-skin:hover { transform: translateY(-1px); }
-.dsh-aurora-skin.is-active {
-  border-color: var(--a2);
-  box-shadow: 0 0 0 1px var(--a2) inset, 0 10px 30px rgba(0, 0, 0, 0.16);
+.dsh-aurora-card:hover { transform: translateY(-1px); }
+.dsh-aurora-card.is-active {
+  border-color: var(--a2, #4f7cff);
+  box-shadow: 0 0 0 1.5px var(--a2, #4f7cff), 0 10px 26px rgba(0, 0, 0, 0.14);
 }
-.dsh-aurora-skin:focus-visible, .dsh-aurora-switch:focus-visible, .dsh-aurora-reset:focus-visible {
-  outline: 2px solid var(--a2); outline-offset: 2px;
+.dsh-aurora-card:focus-visible, .dsh-aurora-switch:focus-visible,
+.dsh-aurora-remove:focus-visible, .dsh-aurora-range:focus-visible {
+  outline: 2px solid var(--a2, #4f7cff); outline-offset: 2px;
+}
+.dsh-aurora-preview {
+  display: block; height: 96px; border-radius: 8px; overflow: hidden;
+  background: linear-gradient(150deg, #1a2233, #0b1018);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.dsh-aurora-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dsh-aurora-preview.is-empty {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--dsw-alias-bg-layer-2, rgba(127, 127, 127, 0.12));
+  border: 1px dashed var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.35));
+  color: var(--dsw-alias-label-tertiary, #777); font-size: 12px;
+}
+.dsh-aurora-preview.is-off {
+  background: linear-gradient(150deg, #2b2f36, #14171c);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .dsh-aurora-swatch {
-  height: 56px; border-radius: 10px;
   background:
     radial-gradient(circle at 18% 26%, var(--s1), transparent 56%),
     radial-gradient(circle at 78% 18%, var(--s2), transparent 58%),
     radial-gradient(circle at 62% 92%, var(--s3), transparent 56%),
     linear-gradient(150deg, var(--s4), #05070d);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
-.dsh-aurora-skin-name { font-size: 14px; font-weight: 600; }
-.dsh-aurora-skin-desc { font-size: 12px; color: var(--dsw-alias-label-tertiary, #777); }
+.dsh-aurora-card-name { font-size: 13px; font-weight: 600; line-height: 18px; }
+.dsh-aurora-card-desc { font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary, #777); }
 .dsh-aurora-badge {
-  position: absolute; top: 10px; right: 10px;
-  padding: 2px 8px; border-radius: 999px;
-  background: var(--a2); color: #fff; font-size: 11px; line-height: 16px;
+  position: absolute; top: 8px; right: 8px;
+  padding: 1px 7px; border-radius: 999px;
+  background: var(--a2, #4f7cff); color: #fff; font-size: 10px; line-height: 15px;
+}
+.dsh-aurora-section-title {
+  margin: 24px 0 8px; font-size: 12px; font-weight: 500;
+  color: var(--dsw-alias-label-tertiary, #777);
+}
+.dsh-aurora-section {
+  border: 1px solid var(--dsw-alias-border-l2, rgba(127, 127, 127, 0.25));
+  border-radius: 12px; padding: 0 16px;
+  background: var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08));
 }
 .dsh-aurora-row {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 13px 0; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.16));
+  min-height: 48px; padding: 8px 0;
+  border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.16));
 }
-.dsh-aurora-row:last-of-type { border-bottom: none; }
-.dsh-aurora-row-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.dsh-aurora-row-title { font-size: 14px; }
-.dsh-aurora-row-desc { font-size: 12px; color: var(--dsw-alias-label-tertiary, #777); }
+.dsh-aurora-row:last-child { border-bottom: none; }
+.dsh-aurora-row-label { font-size: 13px; }
+.dsh-aurora-row-control { display: flex; align-items: center; gap: 10px; }
+.dsh-aurora-value {
+  min-width: 46px; text-align: right; font-size: 12px;
+  color: var(--dsw-alias-label-tertiary, #777); font-variant-numeric: tabular-nums;
+}
+.dsh-aurora-range { width: 200px; accent-color: var(--a2, #4f7cff); cursor: pointer; }
+.dsh-aurora-thumb {
+  width: 52px; height: 30px; border-radius: 6px; object-fit: cover; display: block;
+  background: var(--dsw-alias-bg-layer-3, rgba(127, 127, 127, 0.2));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.dsh-aurora-thumb.is-empty { opacity: 0.5; }
+.dsh-aurora-remove {
+  padding: 4px 10px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 12px;
+  border: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.3));
+  background: transparent; color: inherit;
+}
+.dsh-aurora-remove:disabled { opacity: 0.45; cursor: default; }
+.dsh-aurora-remove:not(:disabled):hover { background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.1)); }
 .dsh-aurora-switch {
   position: relative; flex: none; width: 40px; height: 22px; padding: 0;
   border-radius: 999px; cursor: pointer;
@@ -758,7 +1099,7 @@ body:not([data-ds-dark-theme]) #dsh-aurora-layer .dsh-aurora-vignette {
   background: var(--dsw-alias-bg-layer-3, rgba(127, 127, 127, 0.18));
   transition: background 0.18s ease, border-color 0.18s ease;
 }
-.dsh-aurora-switch.is-on { background: var(--a2); border-color: transparent; }
+.dsh-aurora-switch.is-on { background: var(--a2, #4f7cff); border-color: transparent; }
 .dsh-aurora-knob {
   position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
   border-radius: 50%; background: #fff;
@@ -766,14 +1107,10 @@ body:not([data-ds-dark-theme]) #dsh-aurora-layer .dsh-aurora-vignette {
   transition: transform 0.18s ease;
 }
 .dsh-aurora-switch.is-on .dsh-aurora-knob { transform: translateX(18px); }
-.dsh-aurora-foot { display: flex; align-items: center; gap: 16px; margin-top: 30px; flex-wrap: wrap; }
-.dsh-aurora-reset {
-  padding: 8px 14px; border-radius: 10px; cursor: pointer; font: inherit;
-  border: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.3));
-  background: transparent; color: inherit;
+.dsh-aurora-note {
+  margin: 18px 0 0; font-size: 11px; line-height: 17px;
+  color: var(--dsw-alias-label-tertiary, #777);
 }
-.dsh-aurora-reset:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.1)); }
-.dsh-aurora-note { margin: 0; font-size: 12px; color: var(--dsw-alias-label-tertiary, #777); }
 `
 
     return { name: NAME, inject: ['slots'], apply }

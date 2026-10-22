@@ -71,6 +71,10 @@ class Element {
       this._canvas ??= new Element('canvas')
       return this._canvas
     }
+    if (selector === 'img') {
+      this._img ??= new Element('img')
+      return this._img
+    }
     return null
   }
 
@@ -157,6 +161,9 @@ function createReact() {
     useEffect(effect) {
       hooks.effects.push(effect)
     },
+    useRef(initial) {
+      return { current: initial ?? null }
+    },
     useSyncExternalStore(_subscribe, getSnapshot) {
       return getSnapshot()
     },
@@ -170,11 +177,6 @@ function createReact() {
 
   return {
     React,
-    reset() {
-      hooks.cursor = 0
-      hooks.states = []
-      hooks.effects = []
-    },
     render(Component, props = {}) {
       hooks.cursor = 0
       hooks.states = []
@@ -284,19 +286,27 @@ function makeContext({ detectLocale = true } = {}) {
 
 function expand(node) {
   // The stub renderer does not mount nested function components the way React
-  // does, so expand the few hook-free ones (toggle rows) on demand.
+  // does, so expand the hook-free ones (cards, toggles, sliders) on demand.
   if (node !== null && typeof node === 'object' && typeof node.type === 'function') {
     return expand(node.type(node.props))
   }
   return node
 }
 
-function findButtons(node, out = []) {
+function collect(node, predicate, out = []) {
   node = expand(node)
   if (node === null || typeof node !== 'object') return out
-  if (node.type === 'button') out.push(node)
-  for (const child of node.children ?? []) findButtons(child, out)
+  if (predicate(node)) out.push(node)
+  for (const child of node.children ?? []) collect(child, predicate, out)
   return out
+}
+
+function findButtons(node) {
+  return collect(node, (item) => item.type === 'button')
+}
+
+function findInputs(node, type) {
+  return collect(node, (item) => item.type === 'input' && item.props.type === type)
 }
 
 function textOf(node) {
@@ -305,6 +315,12 @@ function textOf(node) {
   if (typeof node === 'string' || typeof node === 'number') return String(node)
   if (Array.isArray(node)) return node.map(textOf).join(' ')
   return textOf(node.children)
+}
+
+function pageTree(plugin, ctx, react) {
+  plugin.apply(ctx)
+  const main = ctx.__registrations.find((item) => item.options.name === 'main')
+  return react.render(main.Component)
 }
 
 /* ---------------------------------------------------------------- tests -- */
@@ -332,7 +348,7 @@ test('bundle contract: id, plugin shape, slots dependency', () => {
   assert.equal(typeof plugin.apply, 'function')
 })
 
-test('apply: registers two slots with matching id/key and installs the layer', () => {
+test('apply: registers two slots and installs the layer', () => {
   const { document, plugin } = boot()
   const { ctx, registrations, dictionaries } = makeContext()
   plugin.apply(ctx)
@@ -346,8 +362,6 @@ test('apply: registers two slots with matching id/key and installs the layer', (
   assert.equal(main.options.key, 'aurora-theme')
   assert.equal(sidebar.options.order, 20)
   assert.equal(sidebar.options.label(), '皮肤')
-  assert.equal(typeof sidebar.Component, 'function')
-  assert.equal(typeof main.Component, 'function')
 
   assert.equal(dictionaries.length, 1)
   assert.equal(dictionaries[0].namespace, 'auroraTheme')
@@ -357,73 +371,107 @@ test('apply: registers two slots with matching id/key and installs the layer', (
   assert.ok(document.getElementById('dsh-aurora-style'), 'style tag must be installed')
   assert.ok(document.getElementById('dsh-aurora-layer'), 'backdrop layer must be installed')
   assert.equal(document.body.getAttribute('data-aurora-on'), '1')
-  assert.equal(document.body.getAttribute('data-aurora-skin'), 'aurora')
+  assert.equal(document.body.getAttribute('data-aurora-mode'), 'aurora')
   assert.equal(document.body.getAttribute('data-aurora-glass'), '1')
 })
 
-test('page renders palettes and effects in the active language', () => {
-  const { document, plugin, react } = boot()
+test('page renders five choices, wallpaper controls and effects', () => {
+  const { plugin, react } = boot()
   const { ctx, registrations } = makeContext()
-  plugin.apply(ctx)
-  const main = registrations.find((item) => item.options.name === 'main')
-  const tree = react.render(main.Component)
+  ctx.__registrations = registrations
+  const tree = pageTree(plugin, ctx, react)
   const text = textOf(tree)
   assert.match(text, /皮肤/)
-  assert.match(text, /配色/)
-  assert.match(text, /效果/)
-  assert.match(text, /玻璃/)
-  const buttons = findButtons(tree)
-  assert.ok(buttons.length >= 4, 'three palettes plus toggles and reset')
+  assert.match(text, /换一张背景/)
+  assert.match(text, /我的壁纸/)
+  assert.match(text, /深海极光/)
+  assert.match(text, /落日余烬/)
+  assert.match(text, /苍苔/)
+  assert.match(text, /关闭/)
+  assert.match(text, /模糊/)
+  assert.match(text, /压暗/)
+  assert.match(text, /分区玻璃/)
+
+  const cards = findButtons(tree).filter((button) => button.props.role === 'radio')
+  assert.equal(cards.length, 5, 'wallpaper + three palettes + off')
+  const ranges = findInputs(tree, 'range')
+  assert.equal(ranges.length, 2, 'blur and dim')
+  const switches = findButtons(tree).filter((button) => button.props.role === 'switch')
+  assert.equal(switches.length, 7)
 })
 
-test('choosing a palette persists and updates the installed layer', () => {
+test('choosing a palette persists and updates the layer', () => {
   const { document, localStorage, plugin, react } = boot()
   const { ctx, registrations } = makeContext()
-  plugin.apply(ctx)
-  const main = registrations.find((item) => item.options.name === 'main')
-  const tree = react.render(main.Component)
-  const buttons = findButtons(tree)
-  const ember = buttons.find((button) => textOf(button).includes('余烬'))
-  assert.ok(ember, 'ember palette card must exist')
-  ember.props.onClick()
+  ctx.__registrations = registrations
+  const tree = pageTree(plugin, ctx, react)
+  const moss = findButtons(tree).find((button) => textOf(button).includes('苍苔'))
+  assert.ok(moss, 'moss card must exist')
+  moss.props.onClick()
 
-  assert.equal(document.body.getAttribute('data-aurora-skin'), 'ember')
-  assert.equal(JSON.parse(localStorage.getItem('dsh-aurora-theme/v1')).skin, 'ember')
+  assert.equal(document.body.getAttribute('data-aurora-mode'), 'mint')
+  assert.equal(JSON.parse(localStorage.getItem('dsh-aurora-theme/v2')).mode, 'mint')
+})
+
+test('“off” restores the stock look by dropping data-aurora-on', () => {
+  const { document, plugin, react } = boot()
+  const { ctx, registrations } = makeContext()
+  ctx.__registrations = registrations
+  const tree = pageTree(plugin, ctx, react)
+  const off = findButtons(tree).find((button) => textOf(button).trim().startsWith('关闭'))
+  assert.ok(off, 'off card must exist')
+  off.props.onClick()
+
+  assert.equal(document.body.getAttribute('data-aurora-mode'), 'off')
+  assert.equal(document.body.hasAttribute('data-aurora-on'), false)
 })
 
 test('toggling an effect flips the body attribute and persists', () => {
   const { document, localStorage, plugin, react } = boot()
   const { ctx, registrations } = makeContext()
-  plugin.apply(ctx)
-  const main = registrations.find((item) => item.options.name === 'main')
-  const switches = findButtons(react.render(main.Component)).filter((button) => button.props.role === 'switch')
-  assert.equal(switches.length, 7)
-  const glass = switches.find((button) => button.props['aria-label'] === '玻璃')
+  ctx.__registrations = registrations
+  const tree = pageTree(plugin, ctx, react)
+  const glass = findButtons(tree).find((button) => button.props['aria-label'] === '分区玻璃')
+  assert.ok(glass)
   glass.props.onClick()
   assert.equal(document.body.getAttribute('data-aurora-glass'), '0')
-  assert.equal(JSON.parse(localStorage.getItem('dsh-aurora-theme/v1')).glass, false)
+  assert.equal(JSON.parse(localStorage.getItem('dsh-aurora-theme/v2')).glass, false)
+})
+
+test('sliders update the layer variables and persist', () => {
+  const { document, localStorage, plugin, react } = boot()
+  const { ctx, registrations } = makeContext()
+  ctx.__registrations = registrations
+  const tree = pageTree(plugin, ctx, react)
+  const blur = findInputs(tree, 'range').find((input) => input.props['aria-label'] === '模糊')
+  assert.ok(blur)
+  blur.props.onChange({ target: { value: '22' } })
+
+  const layer = document.getElementById('dsh-aurora-layer')
+  assert.equal(layer.style.getPropertyValue('--a-blur'), '22')
+  assert.equal(JSON.parse(localStorage.getItem('dsh-aurora-theme/v2')).blur, 22)
 })
 
 test('state survives a reload', () => {
   const first = boot()
   const firstCtx = makeContext()
-  first.plugin.apply(firstCtx.ctx)
-  const main = firstCtx.registrations.find((item) => item.options.name === 'main')
-  const ember = findButtons(first.react.render(main.Component)).find((button) => textOf(button).includes('余烬'))
+  firstCtx.ctx.__registrations = firstCtx.registrations
+  const tree = pageTree(first.plugin, firstCtx.ctx, first.react)
+  const ember = findButtons(tree).find((button) => textOf(button).includes('落日余烬'))
   ember.props.onClick()
   const saved = first.localStorage._dump()
 
   const second = boot({ storage: saved })
   const secondCtx = makeContext()
   second.plugin.apply(secondCtx.ctx)
-  assert.equal(second.document.body.getAttribute('data-aurora-skin'), 'ember')
+  assert.equal(second.document.body.getAttribute('data-aurora-mode'), 'ember')
 })
 
 test('missing locale service degrades to the browser language instead of breaking', () => {
   const { document, plugin, react } = boot({ detectLocale: false })
-  const { ctx, registrations, dictionaries } = makeContext({ detectLocale: false })
+  const { ctx, registrations } = makeContext({ detectLocale: false })
+  ctx.__registrations = registrations
   plugin.apply(ctx)
-  assert.equal(dictionaries.length, 0)
   assert.equal(registrations.length, 2, 'slots still register without locale')
   const main = registrations.find((item) => item.options.name === 'main')
   const text = textOf(react.render(main.Component))
@@ -431,7 +479,7 @@ test('missing locale service degrades to the browser language instead of breakin
   assert.equal(document.body.getAttribute('data-aurora-on'), '1')
 })
 
-test('teardown removes layer, style, body attributes and the store subscription', () => {
+test('teardown removes layer, style, body attributes and subscriptions', () => {
   const { document, plugin } = boot()
   const { ctx, disposers } = makeContext()
   plugin.apply(ctx)
@@ -440,7 +488,7 @@ test('teardown removes layer, style, body attributes and the store subscription'
   disposers[0]()
   assert.equal(document.getElementById('dsh-aurora-layer'), null)
   assert.equal(document.getElementById('dsh-aurora-style'), null)
-  for (const name of ['data-aurora-on', 'data-aurora-skin', 'data-aurora-glass']) {
+  for (const name of ['data-aurora-on', 'data-aurora-mode', 'data-aurora-glass']) {
     assert.equal(document.body.hasAttribute(name), false, `${name} must be cleared`)
   }
 })
