@@ -1,0 +1,11 @@
+# Host loader row for dsh-aurora-theme.
+#
+# The row id is a stable address: profile patches disable the skin with
+# `- id: aurora-theme` + `disabled: true`, and (if the optional settings bridge
+# is enabled later) the Host settings namespace equals this id.
+#
+# The Host half is intentionally empty: the row only has to import successfully
+# so the client module registry can scan `dsh.client` and serve client.js.
+- insert:
+    - id: aurora-theme
+      name: dsh-aurora-theme

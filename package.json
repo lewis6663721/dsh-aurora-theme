@@ -1,0 +1,56 @@
+{
+  "name": "dsh-aurora-theme",
+  "version": "0.1.0",
+  "description": "Aurora skin for the DeepSeek Harness Web UI: animated background, semantic-token surfaces, three palettes and a skin page.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "theme",
+    "skin",
+    "aurora"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "tools/check.mjs",
+    "LICENSE",
+    "docs/preview-dark.jpg",
+    "docs/preview-light.jpg",
+    "docs/preview-app.jpg"
+  ],
+  "engines": {
+    "node": ">=22.19.0",
+    "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "check": "node tools/check.mjs"
+  },
+  "author": "liuyaohua",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lewis6663721/dsh-aurora-theme.git"
+  },
+  "homepage": "https://github.com/lewis6663721/dsh-aurora-theme#readme",
+  "bugs": {
+    "url": "https://github.com/lewis6663721/dsh-aurora-theme/issues"
+  }
+}
