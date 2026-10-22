@@ -19,7 +19,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const NAME = 'dsh-aurora-theme'
-    const VERSION = '0.2.0'
+    const VERSION = '0.2.1'
     /** Main-panel key and sidebar entry id; they must match. */
     const PANEL_ID = 'aurora-theme'
     /** Locale namespace for this plugin's dictionaries. */
@@ -992,10 +992,20 @@ body:not([data-ds-dark-theme]) #dsh-aurora-layer .dsh-aurora-vignette {
 
 /* ---- skin page ---- */
 .dsh-aurora-page {
-  max-width: 1040px; margin: 0 auto; padding: 30px 24px 72px;
+  /* The main panel gives its page the full column and expects the page to
+     scroll itself (same contract as the shipped plugins page). */
+  box-sizing: border-box;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 30px clamp(24px, 4vw, 48px) 64px;
   color: var(--dsw-alias-label-primary, #111);
   font: inherit;
 }
+[data-platform="darwin"] .dsh-aurora-page {
+  padding-top: calc(30px + var(--dsh-frame-top-clearance, 0px));
+}
+.dsh-aurora-page * { box-sizing: border-box; }
 .dsh-aurora-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .dsh-aurora-title { margin: 0; font-size: 22px; line-height: 30px; font-weight: 600; }
 .dsh-aurora-version {

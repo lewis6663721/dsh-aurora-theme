@@ -44,7 +44,7 @@ dsh plugin --profile web add https://github.com/lewis6663721/dsh-aurora-theme
 
 ```sh
 npm pack --pack-destination dist
-dsh plugin --profile web add ./dist/dsh-aurora-theme-0.2.0.tgz
+dsh plugin --profile web add ./dist/dsh-aurora-theme-0.2.1.tgz
 ```
 
 ### 从本地目录安装（开发用）

@@ -1,6 +1,6 @@
 {
   "name": "dsh-aurora-theme",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Wallpaper + aurora skin for the DeepSeek Harness Web UI: custom background with blur/dim, three palettes, seven effects, and an off switch.",
   "type": "module",
   "license": "MIT",
