@@ -104,7 +104,9 @@ apply(ctx)    ├─ ctx.effect(install)        背景层 + 样式 + body 属性
 
 - 宿主半边 `index.js` 是空的：它只需要 import 成功，客户端模块系统才能扫描到 `dsh.client`。
 - 两个槽位：`sidebar.panellist`（左侧栏一行）和 `main`（主面板页），`id` 与 `key` 必须一致。
-- 背景层是 `position: fixed; z-index: -1` 的独立节点：壁纸 `<img>`、极光色团、光标光晕、
+- 皮肤页铺满主栏并自己滚动（`height: 100%; overflow-y: auto`），宽屏不居中留白，
+  与官方插件页的根节点契约一致。
+- 背景层是 `position: fixed; z-index: -1` 的独立节点：壁纸背景、极光色团、光标光晕、
   扫光、尘埃 canvas、噪点、暗角都在这层里。
 - 壁纸用 `blur(calc(var(--a-blur) * 1px)) brightness(...)` 实时响应滑杆，不重挂 DOM；
   显示方式只切换 `background-size/repeat` 或 3×3 网格的 `background-position`。
@@ -168,6 +170,7 @@ tools/check.mjs     无浏览器契约检查
 - 壁纸和设置都是**每浏览器**的，不是 profile 级；多人共用一个 DSH 时互不影响，但也不会同步。
 - 手写 classic script，没有类型检查和构建期校验；靠 `node --check` 与检查脚本保底。
 - 背景是 CSS + canvas，极端低端设备上可关掉漂浮光点/光斑扫过/颗粒噪点降低开销。
+- 多宫格是把一张图按 3×3 切开；原图比例与屏幕差很多时每格会拉伸，要不变形请用「完整」。
 - 如果 DSH 未来改动 `--dsw-alias-*` 的语义，颜色可能需要跟着调；不会影响功能。
 
 ## License
