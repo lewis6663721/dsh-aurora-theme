@@ -390,6 +390,9 @@ test('page renders five choices, wallpaper controls and effects', () => {
   assert.match(text, /关闭/)
   assert.match(text, /模糊/)
   assert.match(text, /压暗/)
+  assert.match(text, /显示方式/)
+  assert.match(text, /平铺/)
+  assert.match(text, /多宫格/)
   assert.match(text, /分区玻璃/)
 
   const cards = findButtons(tree).filter((button) => button.props.role === 'radio')
@@ -436,6 +439,18 @@ test('toggling an effect flips the body attribute and persists', () => {
   glass.props.onClick()
   assert.equal(document.body.getAttribute('data-aurora-glass'), '0')
   assert.equal(JSON.parse(localStorage.getItem('dsh-aurora-theme/v2')).glass, false)
+})
+
+test('wallpaper fit mode persists and drives the body attribute', () => {
+  const { document, localStorage, plugin, react } = boot()
+  const { ctx, registrations } = makeContext()
+  ctx.__registrations = registrations
+  const tree = pageTree(plugin, ctx, react)
+  const tile = findButtons(tree).find((button) => textOf(button).trim() === '平铺')
+  assert.ok(tile, 'tile fit button must exist')
+  tile.props.onClick()
+  assert.equal(document.body.getAttribute('data-aurora-fit'), 'tile')
+  assert.equal(JSON.parse(localStorage.getItem('dsh-aurora-theme/v2')).fit, 'tile')
 })
 
 test('sliders update the layer variables and persist', () => {

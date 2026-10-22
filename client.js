@@ -19,7 +19,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const NAME = 'dsh-aurora-theme'
-    const VERSION = '0.2.1'
+    const VERSION = '0.3.0'
     /** Main-panel key and sidebar entry id; they must match. */
     const PANEL_ID = 'aurora-theme'
     /** Locale namespace for this plugin's dictionaries. */
@@ -35,8 +35,11 @@ window.__ModuleLoader__.load({
     const MODES = ['aurora', 'ember', 'mint', 'wallpaper', 'off']
     /** Toggle order on the page; each key becomes `data-aurora-<key>`. */
     const TOGGLES = ['glow', 'parallax', 'breathe', 'sweep', 'motes', 'grain', 'glass']
+    /** Wallpaper mapping: fill (crop), contain, stretch, tile, 3x3 grid. */
+    const FITS = ['cover', 'contain', 'stretch', 'tile', 'grid']
     const DEFAULT_STATE = {
       mode: 'aurora',
+      fit: 'cover',
       blur: 8,
       dim: 30,
       glow: true,
@@ -85,6 +88,12 @@ window.__ModuleLoader__.load({
       'skin.mint': '苍苔',
       'skin.mint.desc': '薄荷 · 松绿 · 湖蓝，清透玻璃',
       wallpaperSection: '壁纸',
+      fit: '显示方式',
+      'fit.cover': '填充',
+      'fit.contain': '完整',
+      'fit.stretch': '拉伸',
+      'fit.tile': '平铺',
+      'fit.grid': '多宫格',
       background: '背景图',
       remove: '移除',
       blur: '模糊',
@@ -120,6 +129,12 @@ window.__ModuleLoader__.load({
       'skin.mint': 'Moss',
       'skin.mint.desc': 'Mint · pine · lagoon, clear glass',
       wallpaperSection: 'Wallpaper',
+      fit: 'Fit',
+      'fit.cover': 'Fill',
+      'fit.contain': 'Fit',
+      'fit.stretch': 'Stretch',
+      'fit.tile': 'Tile',
+      'fit.grid': 'Grid',
       background: 'Background',
       remove: 'Remove',
       blur: 'Blur',
@@ -154,6 +169,7 @@ window.__ModuleLoader__.load({
       if (raw === null || typeof raw !== 'object') return state
       if (MODES.includes(raw.mode)) state.mode = raw.mode
       else if (typeof raw.skin === 'string' && MODES.includes(raw.skin)) state.mode = raw.skin
+      if (FITS.includes(raw.fit)) state.fit = raw.fit
       if (Number.isFinite(raw.blur)) state.blur = clamp(Math.round(raw.blur), 0, 40)
       if (Number.isFinite(raw.dim)) state.dim = clamp(Math.round(raw.dim), 0, 80)
       for (const key of TOGGLES) if (typeof raw[key] === 'boolean') state[key] = raw[key]
@@ -342,7 +358,7 @@ window.__ModuleLoader__.load({
     /* background layer                                                   */
     /* ------------------------------------------------------------------ */
 
-    const BODY_ATTRS = ['data-aurora-on', 'data-aurora-mode', ...TOGGLES.map((key) => `data-aurora-${key}`)]
+    const BODY_ATTRS = ['data-aurora-on', 'data-aurora-mode', 'data-aurora-fit', ...TOGGLES.map((key) => `data-aurora-${key}`)]
 
     function applyBody(state) {
       const body = document.body
@@ -350,6 +366,7 @@ window.__ModuleLoader__.load({
       if (state.mode === 'off') body.removeAttribute('data-aurora-on')
       else body.setAttribute('data-aurora-on', '1')
       body.setAttribute('data-aurora-mode', state.mode)
+      body.setAttribute('data-aurora-fit', state.fit)
       for (const key of TOGGLES) body.setAttribute(`data-aurora-${key}`, state[key] ? '1' : '0')
     }
 
@@ -369,7 +386,12 @@ window.__ModuleLoader__.load({
     /** Static markup for the backdrop; no user input reaches it. */
     const LAYER_HTML =
       '<div class="dsh-aurora-parallax">' +
-      '<div class="dsh-aurora-wallpaper"><img alt=""></div>' +
+      '<div class="dsh-aurora-wallpaper"></div>' +
+      '<div class="dsh-aurora-wallpaper-grid">' +
+      '<span style="--c:0;--r:0"></span><span style="--c:1;--r:0"></span><span style="--c:2;--r:0"></span>' +
+      '<span style="--c:0;--r:1"></span><span style="--c:1;--r:1"></span><span style="--c:2;--r:1"></span>' +
+      '<span style="--c:0;--r:2"></span><span style="--c:1;--r:2"></span><span style="--c:2;--r:2"></span>' +
+      '</div>' +
       '<div class="dsh-aurora-drift">' +
       '<div class="dsh-aurora-blob b1"></div>' +
       '<div class="dsh-aurora-blob b2"></div>' +
@@ -494,14 +516,12 @@ window.__ModuleLoader__.load({
       layer.innerHTML = LAYER_HTML
       document.body.appendChild(layer)
 
-      const image = layer.querySelector('img')
       const canvas = layer.querySelector('canvas')
       const motes = canvas === null ? null : createMotes(canvas)
 
       const syncWallpaper = () => {
-        if (image === null) return
-        if (wallpaperUrl === null) image.removeAttribute('src')
-        else image.setAttribute('src', wallpaperUrl)
+        if (wallpaperUrl === null) layer.style.removeProperty('--a-wallpaper')
+        else layer.style.setProperty('--a-wallpaper', `url("${wallpaperUrl}")`)
       }
       const unsubscribeWallpaper = subscribeWallpaper(syncWallpaper)
       syncWallpaper()
@@ -762,6 +782,32 @@ window.__ModuleLoader__.load({
               ),
             ),
           ),
+          h(
+            'div',
+            { className: 'dsh-aurora-row' },
+            h('span', { className: 'dsh-aurora-row-label' }, translate('fit')),
+            h(
+              'span',
+              { className: 'dsh-aurora-row-control' },
+              h(
+                'span',
+                { className: 'dsh-aurora-segments' },
+                ...FITS.map((fit) =>
+                  h(
+                    'button',
+                    {
+                      key: fit,
+                      type: 'button',
+                      className: 'dsh-aurora-segment' + (state.fit === fit ? ' is-on' : ''),
+                      'aria-pressed': state.fit === fit,
+                      onClick: () => store.set({ fit }),
+                    },
+                    translate(`fit.${fit}`),
+                  ),
+                ),
+              ),
+            ),
+          ),
           h(Slider, { id: 'blur', min: 0, max: 40, value: state.blur, unit: ' px' }),
           h(Slider, { id: 'dim', min: 0, max: 80, value: state.dim, unit: '%' }),
         ),
@@ -891,12 +937,48 @@ body[data-aurora-mode="off"] #dsh-aurora-layer { display: none; }
 }
 body[data-aurora-parallax="0"] #dsh-aurora-layer .dsh-aurora-parallax { transform: none; }
 
-#dsh-aurora-layer .dsh-aurora-wallpaper { display: none; }
-body[data-aurora-mode="wallpaper"] #dsh-aurora-layer .dsh-aurora-wallpaper { display: block; }
-#dsh-aurora-layer .dsh-aurora-wallpaper img {
-  width: 100%; height: 100%; object-fit: cover;
+#dsh-aurora-layer .dsh-aurora-wallpaper {
+  display: none;
+  background-image: var(--a-wallpaper, none);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-color: color-mix(in srgb, var(--a-bg) 82%, #000);
   filter: blur(calc(var(--a-blur, 8) * 1px)) brightness(calc(1 - var(--a-dim, 30) / 100));
-  transform: scale(1.05);
+  transform: scale(1.04);
+}
+body[data-aurora-mode="wallpaper"] #dsh-aurora-layer .dsh-aurora-wallpaper { display: block; }
+body[data-aurora-mode="wallpaper"][data-aurora-fit="contain"] #dsh-aurora-layer .dsh-aurora-wallpaper {
+  background-size: contain;
+}
+body[data-aurora-mode="wallpaper"][data-aurora-fit="stretch"] #dsh-aurora-layer .dsh-aurora-wallpaper {
+  background-size: 100% 100%;
+}
+body[data-aurora-mode="wallpaper"][data-aurora-fit="tile"] #dsh-aurora-layer .dsh-aurora-wallpaper {
+  background-size: 22% auto;
+  background-repeat: repeat;
+  background-position: 0 0;
+}
+body[data-aurora-mode="wallpaper"][data-aurora-fit="grid"] #dsh-aurora-layer .dsh-aurora-wallpaper {
+  display: none;
+}
+
+#dsh-aurora-layer .dsh-aurora-wallpaper-grid {
+  position: absolute; inset: -6%; display: none;
+  grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+  gap: 10px; padding: 10px;
+  filter: blur(calc(var(--a-blur, 8) * 1px)) brightness(calc(1 - var(--a-dim, 30) / 100));
+}
+body[data-aurora-mode="wallpaper"][data-aurora-fit="grid"] #dsh-aurora-layer .dsh-aurora-wallpaper-grid {
+  display: grid;
+}
+#dsh-aurora-layer .dsh-aurora-wallpaper-grid span {
+  background-image: var(--a-wallpaper, none);
+  background-size: 300% 300%;
+  background-position: calc(var(--c) * 50%) calc(var(--r) * 50%);
+  background-repeat: no-repeat;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 body[data-aurora-mode="wallpaper"] #dsh-aurora-layer .dsh-aurora-drift { display: none; }
 
@@ -1077,7 +1159,7 @@ body:not([data-ds-dark-theme]) #dsh-aurora-layer .dsh-aurora-vignette {
   background: var(--dsw-alias-bg-layer-1, rgba(127, 127, 127, 0.08));
 }
 .dsh-aurora-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;
   min-height: 48px; padding: 8px 0;
   border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.16));
 }
@@ -1095,6 +1177,18 @@ body:not([data-ds-dark-theme]) #dsh-aurora-layer .dsh-aurora-vignette {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 .dsh-aurora-thumb.is-empty { opacity: 0.5; }
+.dsh-aurora-segments {
+  display: inline-flex; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.3));
+}
+.dsh-aurora-segment {
+  padding: 4px 9px; border: 0; border-right: 1px solid var(--dsw-alias-border-l1, rgba(127, 127, 127, 0.16));
+  background: transparent; color: var(--dsw-alias-label-secondary, #555);
+  font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; white-space: nowrap;
+}
+.dsh-aurora-segment:last-child { border-right: 0; }
+.dsh-aurora-segment:hover { background: var(--dsw-alias-interactive-bg-hover, rgba(127, 127, 127, 0.1)); }
+.dsh-aurora-segment.is-on { background: var(--a2, #4f7cff); color: #fff; }
 .dsh-aurora-remove {
   padding: 4px 10px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 12px;
   border: 1px solid var(--dsw-alias-border-l3, rgba(127, 127, 127, 0.3));

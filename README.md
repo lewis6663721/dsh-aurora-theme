@@ -12,6 +12,7 @@ DSH Web UI 的壁纸皮肤：选一张自己的图（可模糊、压暗），或
 ## 特性
 
 - **自定义壁纸**：点「我的壁纸」选一张图，图片只存本机 IndexedDB，不上传。
+- **五种显示方式**：填充（默认，铺满裁切）、完整（不裁切）、拉伸、平铺、多宫格（3×3 分格）。
 - **模糊 / 压暗**：两个滑杆实时作用于壁纸，值会记住。
 - **三套极光配色**：深海极光（青绿/靛蓝/品红）、落日余烬（琥珀/玫红/紫）、苍苔（薄荷/松绿/湖蓝）。
 - **关闭**：一键回到 DSH 官方原版外观，不留残留。
@@ -44,7 +45,7 @@ dsh plugin --profile web add https://github.com/lewis6663721/dsh-aurora-theme
 
 ```sh
 npm pack --pack-destination dist
-dsh plugin --profile web add ./dist/dsh-aurora-theme-0.2.1.tgz
+dsh plugin --profile web add ./dist/dsh-aurora-theme-0.3.0.tgz
 ```
 
 ### 从本地目录安装（开发用）
@@ -68,7 +69,7 @@ dsh plugin --profile web remove dsh-aurora-theme
 | 区域 | 内容 |
 | --- | --- |
 | 外观 | 「我的壁纸」+ 三套极光配色 + 「关闭」，点一下立即切换 |
-| 壁纸 | 背景图缩略图 / 移除、模糊 0–40 px、压暗 0–80% |
+| 壁纸 | 背景图缩略图 / 移除、显示方式（填充/完整/拉伸/平铺/多宫格）、模糊 0–40 px、压暗 0–80% |
 | 动效 | 七个开关：光标光晕、壁纸视差、呼吸光、光斑扫过、漂浮光点、颗粒噪点、分区玻璃 |
 
 选「关闭」会回到官方原版外观；再点任意配色或壁纸即可恢复。
@@ -105,7 +106,8 @@ apply(ctx)    ├─ ctx.effect(install)        背景层 + 样式 + body 属性
 - 两个槽位：`sidebar.panellist`（左侧栏一行）和 `main`（主面板页），`id` 与 `key` 必须一致。
 - 背景层是 `position: fixed; z-index: -1` 的独立节点：壁纸 `<img>`、极光色团、光标光晕、
   扫光、尘埃 canvas、噪点、暗角都在这层里。
-- 壁纸用 `blur(calc(var(--a-blur) * 1px)) brightness(...)` 实时响应滑杆，不重挂 DOM。
+- 壁纸用 `blur(calc(var(--a-blur) * 1px)) brightness(...)` 实时响应滑杆，不重挂 DOM；
+  显示方式只切换 `background-size/repeat` 或 3×3 网格的 `background-position`。
 - 表面只用 `--dsw-alias-*` / `--dsw-specific-*` token，并用 `!important` 压过主题呈现器写在
   `body` 内联样式上的值。
 - 「关闭」不销毁插件：移除 `data-aurora-on`，token 覆盖失效、背景层 `display:none`。
@@ -118,19 +120,20 @@ apply(ctx)    ├─ ctx.effect(install)        背景层 + 样式 + body 属性
 npm run check
 ```
 
-`tools/check.mjs` 用最小 DOM + 桩 React 跑 `client.js`，覆盖 11 项：
+`tools/check.mjs` 用最小 DOM + 桩 React 跑 `client.js`，覆盖 12 项：
 
 1. bundle 契约（`id`、`plugin.inject`、`apply`）
 2. 两个槽位的注册参数（`id`/`key`/`order`/`label`）
 3. 中英词典注册
 4. 背景层、`body` 属性、样式标签的安装
-5. 皮肤页五张卡片、两个滑杆、七个开关的渲染
+5. 皮肤页五张卡片、显示方式、两个滑杆、七个开关的渲染
 6. 选配色后的持久化与 `body` 更新
 7. 「关闭」移除 `data-aurora-on`
 8. 开关效果后的持久化
-9. 滑杆写入 CSS 变量并持久化
-10. 重载后恢复、locale 缺席时的降级
-11. 卸载清理与重复 apply 不叠层
+9. 显示方式切换与持久化
+10. 滑杆写入 CSS 变量并持久化
+11. 重载后恢复、locale 缺席时的降级
+12. 卸载清理与重复 apply 不叠层
 
 它不验证视觉效果和真实浏览器布局——那些只能刷新看。`client.js` 没有构建步骤，
 改完直接刷新页面即可；`node --check client.js` 可以兜底语法。
@@ -153,6 +156,7 @@ tools/check.mjs     无浏览器契约检查
 | --- | --- |
 | 装完左侧栏没有「皮肤」 | 没重启 `dsh`；或 bundle 未启用；或 DSH 版本不在兼容范围内 |
 | 有入口但界面没变化 | 刷新页面；确认 `body` 上有 `data-aurora-on` 与 `data-aurora-mode`（DevTools） |
+| 壁纸显示不全 | 默认「填充」会裁切；切到「完整」可看全图，「平铺 / 多宫格」是另外两种铺法 |
 | 选了壁纸但没显示 | 浏览器禁用了 IndexedDB，或图片类型不受支持；换一张 PNG/JPEG 再试 |
 | 壁纸太亮/太透 | 调大「压暗」；关掉「分区玻璃」 |
 | 安装被拒：版本不兼容 | 升级插件；确需运行旧版时按提示执行 `dsh plugin allow-version ... --accept-risk` |
